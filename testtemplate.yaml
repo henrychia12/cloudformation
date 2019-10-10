@@ -28,19 +28,19 @@ Parameters:
 Mappings:
   AWSRegionAMI:
     us-east-1:
-      HVM64: ami-0bba96c31d87e65d9
+      HVM64: ami-04b9e92b5572fa0d1
     us-west-1:
-      HVM64: ami-076abd313cd7640bf
+      HVM64: ami-0dd655843c87b6930
     eu-west-1:
-      HVM64: ami-047bb4163c506cd98
+      HVM64: ami-02df9ea15c1778c9c
     eu-west-2:
-      HVM64: ami-08e154685c0a4ff29
+      HVM64: ami-0be057a22c63962cb
     eu-central-1:
-      HVM64: ami-0f71209b1289bf95c
+      HVM64: ami-0cc0a36f626a4fdf5
     ap-northeast-1:
-      HVM64: ami-0f0dcd3794e1da1e1
+      HVM64: ami-0cd744adeca97abb1
     ap-southeast-1:
-      HVM64: ami-060ff7abd2dba844c
+      HVM64: ami-061eb2b23f9f8839c
   EnvironmentToInstanceType:
     development:
       instanceType: t2.micro
@@ -52,13 +52,14 @@ Conditions:
   CreateProductionVolume: !Equals [ !Ref EnvironmentName, production ]
 Resources:
   myEC2Instance:
-    Type: "AWS::EC2::Instance"
+    Type: AWS::EC2::Instance
     Properties:
       InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentName, instanceType]
       ImageId: !FindInMap [ AWSRegionAMI, !Ref "AWS::Region", HVM64 ]
       KeyName: !Ref KeyName
-      AvailabilityZone: eu-west-1a
-      #SecurityGroups: !Ref InstanceSecurityGroup
+      AvailabilityZone: eu-west-2a
+      SecurityGroupIds:
+      - !GetAtt InstanceSecurityGroup.GroupId
       #UserData:
       #  Fn::Base64: |
       #    #!/bin/bash
@@ -96,23 +97,23 @@ Resources:
       SecurityGroupEgress:
       - CidrIp: 0.0.0.0/0
         IpProtocol: "-1"
-  S3Bucket:
-    Type: AWS::S3::Bucket
-    #DeletionPolicy: Retain
-    Properties:
-      BucketName: !Ref S3BucketName
-      AccessControl: BucketOwnerFullControl
+  #S3Bucket:
+  #  Type: AWS::S3::Bucket
+  #  #DeletionPolicy: Retain
+  #  Properties:
+  #    BucketName: !Ref S3BucketName
+  #    AccessControl: BucketOwnerFullControl
 Outputs:
   SecurityGroupTrialOutput:
     Description: Port to host Jenkins on and have SSH access
     Value: !Ref InstanceSecurityGroup
     Export:
       Name: SecurityGroupTrial
-  S3BucketOutput:
-    Description: S3 Bucket Name
-    Value: !Ref S3Bucket
-    Export:
-      Name: S3BucketTrial
+  #S3BucketOutput:
+  #  Description: S3 Bucket Name
+  #  Value: !Ref S3Bucket
+  #  Export:
+  #    Name: S3BucketTrial
   VolumeId:
     Condition: CreateProductionVolume
     Value: !Ref ProductionInstanceVolume
