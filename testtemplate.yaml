@@ -52,20 +52,20 @@ Conditions:
   CreateProductionVolume: !Equals [ !Ref EnvironmentName, production ]
 Resources:
   myEC2Instance:
-    Type: AWS::EC2::Instance
+    Type: "AWS::EC2::Instance"
     Properties:
       InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentName, instanceType]
       ImageId: !FindInMap [ AWSRegionAMI, !Ref "AWS::Region", HVM64 ]
       KeyName: !Ref KeyName
+      AvailabilityZone: eu-west-1a
       #SecurityGroups: !Ref InstanceSecurityGroup
-      UserData:
-        Fn::Base64: |
-          #!/bin/bash
-          sudo apt-get install git
-          git clone https://github.com/henrychia12/jenkins-server.git
-          cd jenkins-server/scripts
-          ./install.sh
-
+      #UserData:
+      #  Fn::Base64: |
+      #    #!/bin/bash
+      #    sudo apt-get install git
+      #    git clone https://github.com/henrychia12/jenkins-server.git
+      #    cd jenkins-server/scripts
+      #    ./install.sh
   ProductionInstanceVolume:
     Type: AWS::EC2::Volume
     Condition: CreateProductionVolume
