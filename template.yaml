@@ -199,12 +199,12 @@ Outputs:
     Description: Port to host Jenkins on and have SSH access
     Value: !Ref InstanceSecurityGroup
     Export:
-      Name: SecurityGroupTrial
+      Name: !Sub ${AWS::StackName}-SecurityGroup
   S3BucketOutput:
     Description: S3 Bucket Name
     Value: !Ref S3Bucket
     Export:
-      Name: S3BucketTrial
+      Name: !Sub ${AWS::StackName}-S3Bucket
   VolumeId:
     Condition: CreateProductionVolume
     Value: !Ref ProductionInstanceVolume
