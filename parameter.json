@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "KeyName",
+    "ParameterValue": "chia-testing"
+  },
+  {
+    "ParameterKey": "VPCCidr",
+    "ParameterValue": "10.0.0.0/16"
+  },
+  {
+    "ParameterKey": "PublicSubnet1",
+    "ParameterValue": "10.0.0.0/24"
+  },
+  {
+    "ParameterKey": "S3BucketName",
+    "ParameterValue": "chiabuckettesting"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "production"
+  }
+]

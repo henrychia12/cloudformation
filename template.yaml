@@ -9,29 +9,66 @@ Parameters:
     AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"      
     Default: 10.0.0.0/16        
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
-  PublicSubnet1:
+  PublicSubnet1CIDR:
     Description: Please enter the IP range (CIDR notation) for public subnet 1
     Type: String
     AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
     Default: 10.0.0.0/24
     ConstraintDescription: CIDR block paramater must be in the form x.x.x.x/16-28
-#  PrivateSubnet1:
+  PrivateSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for private subnet 1
+    Type: String 
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    Default: 10.0.1.0/24
+    ConstraintDescription: CIDR block parameter must be in the form of x.x.x.x/16-28
+#  PrivateSubnet2CIDR:
 #    Description: Please enter the IP range (CIDR notation) for private subnet 1
 #    Type: String 
 #    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
-#    Default: 10.0.1.0/24
+#    Default: 10.0.2.0/24
 #    ConstraintDescription: CIDR block parameter must be in the form of x.x.x.x/16-28
-  S3BucketName:
-    Description: Name of the S3 bucket that will be created for data to be stored in.
-    Type: String
-    AllowedPattern: ^[a-z0-9][a-z0-9-.]*$
-    Default: enter-unique-value-in-lowercase
-    ConstraintDescription: must be a unique bucket name in lower characters
   EnvironmentName:
     Description: Environment Name
     Type: String
     AllowedValues: [test, production]
-    ConstraintDescription: must be test or production environment
+    ConstraintDescription: Must be test or production environment
+  DBAdmin:
+    Description: Database Admin username
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    ConstraintDescription: Must start with a letter and contain only alphanumeric characters.
+  DBPassword:
+    Description: Database Admin password
+    Type: String
+    MinLength: '1'
+    MaxLength: '30'
+    AllowedPattern: "[a-zA-Z0-9]*"
+    ConstraintDescription: Must only contain alphanumeric characters.
+    NoEcho: 'true'
+  DBSnapshotName:
+    Description: Name of the Database Snapshot (optional)
+    Type: String
+    Default: ''
+  DatabaseAllocatedStorage:
+    Description: The capacity of the database (Gb)
+    Type: Number
+    MinValue: '5'
+    MaxValue: '1024'
+    Default: '5'
+    ConstraintDescription: Must be between 5Gb and 1024Gb
+  DatabaseInstanceClass:
+    Description: The database instance type
+    Type: String
+    AllowedValues: [db.t1.micro, db.m1.small, db.m1.medium, db.m1.large, db.m1.xlarge,
+      db.m2.xlarge, db.m2.2xlarge, db.m2.4xlarge, db.m3.medium, db.m3.large, db.m3.xlarge,
+      db.m3.2xlarge, db.m4.large, db.m4.xlarge, db.m4.2xlarge, db.m4.4xlarge, db.m4.10xlarge,
+      db.r3.large, db.r3.xlarge, db.r3.2xlarge, db.r3.4xlarge, db.r3.8xlarge, db.m2.xlarge,
+      db.m2.2xlarge, db.m2.4xlarge, db.cr1.8xlarge, db.t2.micro, db.t2.small, db.t2.medium,
+      db.t2.large]
+    Default: db.t2.micro
+    ConstraintDescription: Must select a valid database instance type
 Mappings:
   AWSRegionAMI:
     us-east-1:
@@ -77,66 +114,251 @@ Mappings:
       instanceType: t2.small
 Conditions:
   CreateProductionVolume: !Equals [ !Ref EnvironmentName, production ]
+  UseDBSnapshot: !Not [ !Equals [!Ref DBSnapshotName, ""] ]
+  EC2-VPC: !Or [ !Equals [ !Ref "AWS::Region", eu-central-1], !Equals [ !Ref "AWS::Region", eu-west-2 ]]
+  EC2-Classic: !Not [{Condition: EC2-VPC}]
 Resources:
-  myVPC:
+  UserOne:
+    Type: AWS::IAM::User
+    Properties:
+      LoginProfile: 
+        Password: temppasswordOne
+        PasswordResetRequired: 'true'
+      UserName: S3UserOne
+  UserTwo:
+    Type: AWS::IAM::User
+    Properties:
+      LoginProfile:
+        Password: temppasswordTwo
+        PasswordResetRequired: 'true'
+      UserName: S3UserTwo
+  ClientRootUser:
+    Type: AWS::IAM::User
+    Properties:
+      LoginProfile:
+        Password: clientadminpass
+        PasswordResetRequired: 'true'
+      UserName: ClientRootUser
+  S3AdminGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: S3AdminGroup
+  CloudFormationUserGroup:
+    Type: AWS::IAM::Group
+    Properties: 
+      GroupName: CloudFormationUserGroup
+  ClientAdminGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: ClientAdminGroup
+  S3Admin:
+    Type: AWS::IAM::UserToGroupAddition
+    Properties:
+      GroupName: !Ref S3AdminGroup
+      Users:
+      - !Ref UserOne
+      - !Ref UserTwo
+  CloudFormationUsers:
+    Type: AWS::IAM::UserToGroupAddition
+    Properties:
+      GroupName: !Ref CloudFormationUserGroup
+      Users:
+      - !Ref UserOne
+      - !Ref UserTwo
+  ClientAdmin:
+    Type: AWS::IAM::UserToGroupAddition
+    Properties:
+      GroupName: !Ref ClientAdminGroup
+      Users:
+      - !Ref ClientRootUser
+  S3AdminPolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: S3Admins
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Action: s3:*
+          Resource: "*"
+      Groups: #[!Ref S3AdminGroup]
+      - !Ref S3AdminGroup
+  CFUsersPolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CFUsers
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Action: 
+          - cloudformation:Describe*
+          - cloudformation:List*
+          - cloudformation:Get*
+          Resource: "*"
+      Groups: [!Ref CloudFormationUserGroup]
+      #- !Ref CloudFormationUserGroup
+  UserOneKeys:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref UserOne
+  UserTwoKeys:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref UserTwo
+  ClientRootUserKeys:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref ClientRootUser
+  ClientRootRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+  RootRolePolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: root
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Action: "*"
+          Resource: "*"
+      Roles:
+      - !Ref ClientRootRole
+      Groups: 
+      - !Ref ClientAdminGroup
+  RootInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - !Ref ClientRootRole
+  MyVPC:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: !Ref VPCCidr     
-      EnableDnsHostnames: true    
-      EnableDnsSupport: true
-  myInternetGateway:
+      EnableDnsHostnames: 'true'    
+      EnableDnsSupport: 'true'
+  MyInternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties: {}
-  attachInternetGateway:
+  AttachInternetGateway:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref myVPC
-      InternetGatewayId: !Ref myInternetGateway
-  publicSubnet1:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+  PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref myVPC
-      CidrBlock: !Ref PublicSubnet1
-      AvailabilityZone:
-        Fn::Select:
-        - 0
-        - Fn::GetAZs: ''
-      MapPublicIpOnLaunch: true
- #privateSubnet1:
- #   Type: AWS::EC2::Subnet
- #   Properties:
- #     VpcId: !Ref myVPC
- #     CidrBlock: !Ref PrivateSubnet1
- #     AvailabilityZone: !FindInMap [AWSRegionAMI, !Ref "AWS::Region", Az]
-  publicSubnetRouteTable:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PublicSubnet1CIDR
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: 'true'
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+#  PrivateSubnet2:
+#    Type: AWS::EC2::Subnet
+#    Properties:
+#      VpcId: !Ref MyVPC
+#      CidrBlock: !Ref PrivateSubnet2CIDR
+#      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+  PublicSubnetRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref myVPC
-  publicSubnetRoute:
-    DependsOn: myInternetGateway
+      VpcId: !Ref MyVPC
+  PublicSubnetRoute:
+    DependsOn: MyInternetGateway
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref publicSubnetRouteTable
+      RouteTableId: !Ref PublicSubnetRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref myInternetGateway
-  subnet1RouteTableAssociation:
+      GatewayId: !Ref MyInternetGateway
+  Subnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref publicSubnet1
-      RouteTableId: !Ref publicSubnetRouteTable
-  myEC2Instance:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicSubnetRouteTable
+  MyNATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt AttachNATGateway.AllocationId
+      SubnetId: !Ref PublicSubnet1
+  AttachNATGateway:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachInternetGateway
+    Properties:
+      Domain: vpc
+  PrivateSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+  PrivateSubnetRoute:
+    Type: AWS::EC2::Route
+    Properties: 
+      RouteTableId: !Ref PrivateSubnetRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref MyNATGateway
+  PrivateRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTable
+      SubnetId: !Ref PrivateSubnet1
+#  MyNATGateway2:
+#    Type: AWS::EC2::NatGateway
+#    Properties:
+#      AllocationId: !GetAtt AttachNATGateway2.AllocationId
+#      SubnetId: !Ref PublicSubnet1
+#  AttachNATGateway2:
+#    Type: AWS::EC2::EIP
+#    DependsOn: AttachInternetGateway
+#    Properties:
+#      Domain: vpc
+#  PrivateSubnetRouteTable2:
+#    Type: AWS::EC2::RouteTable
+#    Properties:
+#      VpcId: !Ref MyVPC
+#  PrivateSubnetRoute2:
+#    Type: AWS::EC2::Route
+#    Properties: 
+#      RouteTableId: !Ref PrivateSubnetRouteTable2
+#      DestinationCidrBlock: 0.0.0.0/0
+#      NatGatewayId: !Ref MyNATGateway2
+#  PrivateRouteTableAssociation2:
+#    Type: AWS::EC2::SubnetRouteTableAssociation
+#    Properties:
+#      RouteTableId: !Ref PrivateSubnetRouteTable2
+#      SubnetId: !Ref PrivateSubnet2
+#  DBSubnetGroup:
+#    Type: AWS::RDS::DBSubnetGroup
+#    Properties:
+#      DBSubnetGroupDescription: Subnet group for private and public subnet
+#      SubnetIds:
+#      - !Ref PublicSubnet1
+#      - !Ref PrivateSubnet1
+#      - !Ref PrivateSubnet2 
+  MyEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentName, instanceType]
       ImageId: !FindInMap [ AWSRegionAMI, !Ref "AWS::Region", HVM64 ]
       KeyName: !Ref KeyName
-      AvailabilityZone:
-        Fn::Select:
-        - 0
-        - Fn::GetAZs: ''
-      SubnetId: !Ref publicSubnet1
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      SubnetId: !Ref PublicSubnet1
       SecurityGroupIds:
       - !GetAtt InstanceSecurityGroup.GroupId
+      IamInstanceProfile:
+        !Ref RootInstanceProfile
       UserData:
         Fn::Base64: |
           #!/bin/bash
@@ -152,27 +374,47 @@ Resources:
           echo "jenkins repo cloned?" >> jenkins.txt   
           cd /home/jenkins-server/scripts
           ./install.sh
+  MyDataBase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: !Ref DatabaseAllocatedStorage
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      Engine: MySQL
+      EngineVersion: '5.5'
+#      DBSubnetGroupName: !Ref DBSubnetGroup
+      MasterUsername: !Ref DBAdmin
+      MasterUserPassword: !Ref DBPassword
+      DBParameterGroupName: !Ref MyRDSParameterGroup
+      DBSnapshotIdentifier: !If [UseDBSnapshot, !Ref DBSnapshotName,!Ref "AWS::NoValue"]
+      VPCSecurityGroups: !If [ EC2-VPC, [ !GetAtt [ DBInstanceSecurityGroup, GroupId ]], !Ref "AWS::NoValue" ]
+      DBSecurityGroups: !If [ EC2-Classic, !Ref MyDBSecurityGroup, !Ref "AWS::NoValue"]
+  MyRDSParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Family: MySQL5.5
+      Description: CloudFormation Sample Database Parameter Group
+      Parameters: 
+        autocommit: '1'
+        general_log: '1'
+        old_passwords: '0'
   ProductionInstanceVolume:
     Type: AWS::EC2::Volume
     Condition: CreateProductionVolume
     Properties:
-      Size: 100
-      AvailabilityZone:
-        Fn::Select:
-        - 0
-        - Fn::GetAZs: ''
+      Size: '100'
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
   MountPoint:
     Type: AWS::EC2::VolumeAttachment
     Condition: CreateProductionVolume
     Properties:
-      InstanceId: !Ref myEC2Instance
+      InstanceId: !Ref MyEC2Instance
       VolumeId: !Ref ProductionInstanceVolume
       Device: /dev/sdh
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable jenkins access via port 8080 and SSH access
-      VpcId: !Ref myVPC
+      VpcId: !Ref MyVPC
       SecurityGroupIngress:
       - CidrIp: 0.0.0.0/0
         FromPort: "8080"
@@ -185,26 +427,72 @@ Resources:
       SecurityGroupEgress:
       - CidrIp: 0.0.0.0/0
         IpProtocol: "-1"
+  DBInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: EC2-VPC
+    Properties:
+      GroupDescription: Open database access
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0 #!Ref PublicSubnet1CIDR
+        FromPort: "3306"
+        IpProtocol: "tcp"
+        ToPort: "3306"
+  MyDBSecurityGroup:
+    Type: AWS::RDS::DBSecurityGroup
+    Condition: EC2-Classic
+    Properties:
+      GroupDescription: Access to database
+      DBSecurityGroupIngress:
+        EC2SecurityGroupName: !Ref InstanceSecurityGroup
   S3Bucket:
     Type: AWS::S3::Bucket
     #DeletionPolicy: Retain
     Properties:
-      BucketName: !Ref S3BucketName
+      #BucketName: !Ref S3BucketName
       AccessControl: BucketOwnerFullControl
 Outputs:
   Instance1Output:
     Description: Trial to test SSH access into Instance
-    Value: !GetAtt myEC2Instance.PublicIp
+    Value: !GetAtt MyEC2Instance.PublicIp
   SecurityGroupTrialOutput:
     Description: Port to host Jenkins on and have SSH access
     Value: !Ref InstanceSecurityGroup
     Export:
       Name: !Sub ${AWS::StackName}-SecurityGroup
+  PublicSubnetOutput:
+    Description: Public Subnet
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub ${AWS::StackName}-PublicSubnet1
   S3BucketOutput:
     Description: S3 Bucket Name
     Value: !Ref S3Bucket
     Export:
       Name: !Sub ${AWS::StackName}-S3Bucket
-  VolumeId:
+  VolumeIdOutput:
     Condition: CreateProductionVolume
     Value: !Ref ProductionInstanceVolume
+  DatabaseOutput:
+    Description: MySQL Database
+    Value: !Ref MyDataBase
+    Export:
+      Name: !Sub ${AWS::StackName}-DB
+  UserOneAccessKey:
+   Description: AWS Access Key ID for user 1
+   Value: !Ref UserOneKeys
+  UserOneSecretKey:
+    Description: AWS Secret Key for user 1
+    Value: !GetAtt UserOneKeys.SecretAccessKey
+  UserTwoAccessKey:
+   Description: AWS Access Key ID for user 2
+   Value: !Ref UserTwoKeys
+  UserTwoSecretKey:
+    Description: AWS Secret Key for user 2
+    Value: !GetAtt UserTwoKeys.SecretAccessKey
+  ClientRootAccessKey:
+   Description: AWS Access Key ID for Client Root User
+   Value: !Ref ClientRootUserKeys
+  ClientRootSecretKey:
+    Description: AWS Secret Key for Client Root User
+    Value: !GetAtt ClientRootUserKeys.SecretAccessKey
+
